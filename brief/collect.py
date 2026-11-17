@@ -78,10 +78,14 @@ def collect(
     cal = c.fetch("twse_holiday", sources.TWSE_HOLIDAY, lambda b: parse.parse_holiday(parse.load_twse(b)))
     if cal is None:
         cal = HolidayCalendar(source="weekend_only")
+    elif not any(d.year == report_date.year for d in cal.closed):
+        # 清單已經換成別的年度（2026-11-12 起證交所回的是 2027 年）：這份清單對報告日沒有資訊，
+        # 實際上只剩週末判斷，所以 holiday_source 不能寫 "twse"。來源本身有抓到，不算失敗（結束碼不變）。
+        years = "、".join(str(y) for y in sorted({d.year for d in cal.closed})) or "無任何日期"
+        c.warnings.append(f"開休市清單裡沒有 {report_date.year} 年的日期（清單內容：{years}），只用週末判斷，不知道補假和國定假日")
+        cal = HolidayCalendar(source="weekend_only")
     for row in cal.unknown:
         c.warnings.append(f"開休市清單有判斷不了的列（當作休市）：{row}")
-    if cal.source == "twse" and not any(d.year == report_date.year for d in cal.closed):
-        c.warnings.append(f"開休市清單裡沒有 {report_date.year} 年的日期，可能還沒更新")
 
     open_today = cal.is_trading_day(report_date)
     data_date = cal.previous_trading_day(report_date)
