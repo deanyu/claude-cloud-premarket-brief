@@ -192,7 +192,9 @@ def test_token_not_leaked_with_real_requests_stack(tmp_path, monkeypatch, capsys
     session.trust_env = False  # 不走 proxy
     assert telegram.run(_report(tmp_path), fetcher=Fetcher(session, sleep=lambda s: None, timeout=2)) == 1
     out, err = capsys.readouterr()
-    assert "ConnectionError" in err
+    # Linux 連沒人聽的本機埠立刻 ECONNREFUSED（ConnectionError）；Windows 會等到逾時（ConnectTimeout）。
+    # 這個測試要看的是 token 有沒有被遮蔽，不是哪一種連線例外，所以兩種都接受（見 docs/PITFALLS.md）。
+    assert "ConnectionError" in err or "ConnectTimeout" in err
     _assert_no_secret(out, err, caplog.text)
 
 

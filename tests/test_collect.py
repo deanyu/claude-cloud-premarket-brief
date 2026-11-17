@@ -255,3 +255,28 @@ def test_collect_cnyes_cache_write_error(tmp_path):
     assert code == collect.EXIT_OK
     assert result["warnings"][0].startswith("鉅亨網內文存不進快取")
     assert any(n["source"] == "鉅亨網" for n in result["news"])
+
+
+def test_collect_holiday_list_of_other_year_is_weekend_only():
+    # 2026-11-12 起證交所回的開休市清單是 2027 年：對 2026 年的報告日沒有資訊，
+    # holiday_source 不能寫 "twse"；來源有抓到，不算失敗（結束碼 0），改在 warnings 提醒
+    data = json.loads(fixture_bytes("twse_holiday.json"))
+    data["date"] = "20270101"
+    data["data"] = [[row[0].replace("2026-", "2027-"), *row[1:]] for row in data["data"]]
+    table = routes(**{sources.TWSE_HOLIDAY: (200, json.dumps(data, ensure_ascii=False).encode())})
+    code, result, _ = run_collect(date(2026, 10, 7), table)
+    assert code == collect.EXIT_OK
+    assert result["holiday_source"] == "weekend_only"
+    assert result["data_date"] == "2026-10-06"
+    assert len(result["warnings"]) == 1
+    assert "沒有 2026 年" in result["warnings"][0] and "2027" in result["warnings"][0]
+    assert next(s for s in result["sources"] if s["name"] == "twse_holiday")["ok"] is True
+
+
+def test_collect_holiday_list_of_other_year_does_not_know_makeup_holiday():
+    # 只剩週末判斷時，10/9 補假看不出來（這就是為什麼要記 weekend_only 和 warning）
+    data = json.loads(fixture_bytes("twse_holiday.json"))
+    data["data"] = [[row[0].replace("2026-", "2027-"), *row[1:]] for row in data["data"]]
+    table = routes(**{sources.TWSE_HOLIDAY: (200, json.dumps(data, ensure_ascii=False).encode())})
+    _, result, _ = run_collect(date(2026, 10, 9), table)
+    assert result["market_open_today"] is True and result["holiday_source"] == "weekend_only"
